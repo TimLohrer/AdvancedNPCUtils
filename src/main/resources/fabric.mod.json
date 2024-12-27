@@ -1,0 +1,33 @@
+{
+  "schemaVersion": 1,
+  "id": "advanced_npc_utils",
+  "version": "${version}",
+  "name": "Advanced NPC Utils",
+  "description": "HITMAN in Minecraft",
+  "authors": [],
+  "contact": {},
+  "license": "MIT",
+  "icon": "assets/advanced_npc_utils/icon.png",
+  "environment": "*",
+  "entrypoints": {
+    "client": [
+      "de.timlohrer.advanced_npc_utils.client.AdvancedNpcUtilsClient"
+    ],
+    "main": [
+      "de.timlohrer.advanced_npc_utils.AdvancedNpcUtils"
+    ]
+  },
+  "mixins": [
+    "advanced_npc_utils.mixins.json",
+    {
+      "config": "advanced_npc_utils.client.mixins.json",
+      "environment": "client"
+    }
+  ],
+  "depends": {
+    "fabricloader": ">=${loader_version}",
+    "fabric": "*",
+    "minecraft": "${minecraft_version}",
+    "geckolib": ">=4.7.1"
+  }
+}

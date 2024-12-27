@@ -1,0 +1,13 @@
+{
+  "required": true,
+  "minVersion": "0.8",
+  "package": "de.timlohrer.advanced_npc_utils.mixin",
+  "compatibilityLevel": "JAVA_21",
+  "mixins": [
+    "EntityNavigationAccessor",
+    "PathAccessor"
+  ],
+  "injectors": {
+    "defaultRequire": 1
+  }
+}
