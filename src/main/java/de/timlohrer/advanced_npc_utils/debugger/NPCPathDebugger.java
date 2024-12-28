@@ -4,7 +4,6 @@ import de.timlohrer.advanced_npc_utils.AdvancedNpcUtils;
 import de.timlohrer.advanced_npc_utils.mixin.PathAccessor;
 import net.minecraft.block.Block;
 import net.minecraft.block.Blocks;
-import net.minecraft.entity.Entity;
 import net.minecraft.entity.EntityType;
 import net.minecraft.entity.SpawnReason;
 import net.minecraft.entity.ai.pathing.Path;
@@ -13,6 +12,7 @@ import net.minecraft.entity.decoration.DisplayEntity;
 import net.minecraft.entity.mob.PathAwareEntity;
 import net.minecraft.util.math.AffineTransformation;
 import net.minecraft.util.math.BlockPos;
+import net.minecraft.util.math.Vec2f;
 import net.minecraft.util.math.Vec3d;
 import net.minecraft.world.World;
 import org.joml.Quaternionf;
@@ -20,7 +20,9 @@ import org.joml.Vector3f;
 
 import java.awt.*;
 import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Objects;
 
 public interface NPCPathDebugger {
     List<DisplayEntity.BlockDisplayEntity> debugPathEntities = new ArrayList<>();
@@ -34,82 +36,153 @@ public interface NPCPathDebugger {
 
         Color randomColor = new Color((int) (Math.random() * 255), (int) (Math.random() * 255), (int) (Math.random() * 255));
 
+        List<Vec3d> corners = new ArrayList<>();
+
         for (int i = 0; i < nodes.size(); i++) {
-            if (i > 0) {
-                PathNode node = nodes.get(i);
-                Vec3d nodePos = node.getPos().add(0.4, 0, 0.4);
+            Vec3d nodePos = nodes.get(i).getPos().add(0.4, 0, 0.4);
 
-                // don't render last node since it is inside of the target node
-                if (i != nodes.size() - 1) {
-                    this.createDebugPathBlockDisplay(entity.getWorld(), nodePos, Blocks.BLUE_WOOL, new Color(0, 0, 255).getRGB(), false);
+            if (i == 0) {
+                corners.add(nodePos);
+            } else if (i == nodes.size() - 1) {
+                corners.add(nodePos);
+            } else {
+                Vec3d lastCornerPos = corners.getLast();
+                Vec3d nextNodePos = nodes.get(i + 1).getPos().add(0.4, 0, 0.4);
+
+                HashMap<String, String> diffLast = calcPathNodePosDiff(nodePos, lastCornerPos); // +x none +z
+                HashMap<String, String> diffNext = calcPathNodePosDiff(nextNodePos, nodePos); // +x none +z
+
+                if (!Objects.equals(diffLast, diffNext)) {
+                    corners.add(nodePos);
                 }
-
-                PathNode lastNode = nodes.get(i - 1);
-                Vec3d lastNodePos = lastNode.getPos().add(0.4f, 0, 0.4f);
-
-                String xDirection = "none";
-                String zDirection = "none";
-                String heightDirection = "none";
-
-                if (nodePos.x - lastNodePos.x > 0) {
-                    xDirection = "x";
-                } else if (nodePos.x - lastNodePos.x < 0) {
-                    xDirection = "-x";
-                }
-
-                if (nodePos.z - lastNodePos.z > 0) {
-                    zDirection = "z";
-                } else if (nodePos.z - lastNodePos.z < 0) {
-                    zDirection = "-z";
-                }
-
-                if (nodePos.y - lastNodePos.y > 0) {
-                    heightDirection = "y";
-                } else if (nodePos.y - lastNodePos.y < 0) {
-                    heightDirection = "-y";
-                }
-
-                double midX = lastNodePos.x;
-                double midY = lastNodePos.y;
-                double midZ = lastNodePos.z;
-
-                // Calculate the difference between node and lastNode
-                if (xDirection.equals("x") || xDirection.equals("-x")) {
-                    double diffX = (nodePos.x - lastNodePos.x) / 2;
-                    midX = lastNodePos.x + diffX;
-                }
-
-                if (!heightDirection.equals("none")) {
-                    double diffY = (nodePos.y - lastNodePos.y) / 2;
-                    midY = lastNodePos.y + diffY;
-                }
-
-                if (zDirection.equals("z") || zDirection.equals("-z")) {
-                    double diffZ = (nodePos.z - lastNodePos.z) / 2;
-                    midZ = lastNodePos.z + diffZ;
-                }
-
-                // The addition of another for example 0.05 depends on the size of the displayed point. Since our mid point has a size of 1 I add 0.05 to reach the mid of the nex block.
-                Vec3d midPos = new Vec3d(midX, midY, midZ);
-
-                this.createDebugPathBlockDisplay(entity.getWorld(), midPos, Blocks.GLASS, new Color(255, 255, 255).getRGB(), false);
             }
         }
 
+        for(int i = 0; i < corners.size(); i++) {
+            if (i == 0) continue;
+
+            Vec3d corner = corners.get(i);
+            Vec3d lastCornerPos = corners.get(i - 1);
+
+            HashMap<String, String> diffLast = calcPathNodePosDiff(corner, lastCornerPos);
+
+            float xDiff = (float) Math.abs(corner.x - lastCornerPos.x);
+            float yDiff = (float) Math.abs(corner.y - lastCornerPos.y);
+            float zDiff = (float) Math.abs(corner.z - lastCornerPos.z);
+
+            String xDirection = diffLast.get("xDirection");
+            String yDirection = diffLast.get("yDirection");
+            String zDirection = diffLast.get("zDirection");
+
+            Vector3f scaleModifier = new Vector3f(0.0f, 0.0f, 0.0f);
+            Vec2f rotationModifier = new Vec2f(0.0f, 0.0f);
+
+            float lineWidth = getDebugPathBlockDisplayBaseScale(false);
+
+            if((xDirection.equals("none") || zDirection.equals("none"))
+                    && yDirection.equals("none")) {
+                switch ((xDirection + zDirection).replace("none", "")) {
+                    case "x": scaleModifier.add(xDiff, 0, 0);
+                    case "-x": scaleModifier.add(-xDiff, 0, 0);
+                    case "z": scaleModifier.add(0, 0, zDiff);
+                    case "-z": scaleModifier.add(0, 0, -zDiff);
+                }
+            } else if((!(xDirection.equals("none")) && !(zDirection.equals("none")))
+                    && yDirection.equals("none")) {
+                float diagonalLength = (float) Math.sqrt(xDiff * xDiff + zDiff * zDiff);
+                scaleModifier.add(diagonalLength, 0, 0);
+
+                switch (xDirection + zDirection) {
+                    case "xz": {
+                        corner = corner.add(lineWidth + (lineWidth / 2), 0, 1.25 * lineWidth);
+                        rotationModifier = new Vec2f(45.0f, 0.0f);
+                        break;
+                    }
+                    case "x-z": {
+                        corner = corner.add(lineWidth + (lineWidth / 2), 0, lineWidth + (lineWidth / 2));
+                        rotationModifier = new Vec2f(-45.0f, 0.0f);
+                        break;
+                    }
+                    case "-xz": {
+                        corner = corner.add(2.5 * lineWidth, 0, 2.5 * lineWidth);
+                        rotationModifier = new Vec2f(135.0f, 0.0f);
+                        break;
+                    }
+                    case "-x-z": {
+                        corner = corner.add(lineWidth + (lineWidth / 2), 0, 2 * lineWidth);
+                        rotationModifier = new Vec2f(-135.0f, 0.0f);
+                        break;
+                    }
+                }
+            } else if(!xDirection.equals("none") || !zDirection.equals("none")) {
+                // Check if step down either x and y or z and y
+                switch ((xDirection + zDirection).replace("none", "")) {
+                    case "x": scaleModifier.add(xDiff, 0, 0); break;
+                    case "-x": scaleModifier.add(-xDiff, 0, 0); break;
+                    case "z": scaleModifier.add(0, 0, zDiff); break;
+                    case "-z": scaleModifier.add(0, 0, -zDiff); break;
+                }
+
+                switch (yDirection) {
+                    case "y": rotationModifier = new Vec2f(0.0f, 45.0f); break;
+                    case "-y": rotationModifier = new Vec2f(0.0f, -45.0f); break;
+                }
+            } else {
+
+            }
+
+            this.createDebugPathBlockDisplay(entity.getWorld(), corner, scaleModifier, rotationModifier, Blocks.WHITE_CONCRETE, new Color(255, 255, 255).getRGB(), false);
+        };
+
         // Start block
-        this.createDebugPathBlockDisplay(entity.getWorld(), entity.getPos().add(-0.2, 0, -0.2), Blocks.RED_WOOL, Color.decode("0xff0000").getRGB(), true);
+        this.createDebugPathBlockDisplay(entity.getWorld(), entity.getPos().add(-0.2, 0, -0.2), new Vector3f(0, 0, 0), new Vec2f(0.0f, 0.0f), Blocks.RED_WOOL, Color.decode("0xff0000").getRGB(), true);
 
         // End block
-        this.createDebugPathBlockDisplay(entity.getWorld(), Vec3d.of(this.getTargetBlockPos()).add(-0.2, 0, -0.2).add(0.5, 0, 0.5), Blocks.GREEN_WOOL, Color.decode("0x00FF00").getRGB(), true);
+        this.createDebugPathBlockDisplay(entity.getWorld(), Vec3d.of(this.getTargetBlockPos()).add(-0.2, 0, -0.2).add(0.5, 0, 0.5), new Vector3f(0, 0, 0), new Vec2f(0.0f, 0.0f), Blocks.GREEN_WOOL, Color.decode("0x00FF00").getRGB(), true);
     }
 
-    private void createDebugPathBlockDisplay(World world, Vec3d pos, Block block, int glowColor, boolean isStartEndPoint) {
-        float scale = isStartEndPoint ? 0.4f : 0.2f;
+    private HashMap<String, String> calcPathNodePosDiff(Vec3d nodePos, Vec3d lastNodePos) {
+        String xDirection = "none";
+        String yDirection = "none";
+        String zDirection = "none";
+
+        if(nodePos.x > lastNodePos.x) {
+            xDirection = "-x";
+        } else if(nodePos.x < lastNodePos.x) {
+            xDirection = "x";
+        }
+
+        if(nodePos.z > lastNodePos.z) {
+            zDirection = "-z";
+        } else if(nodePos.z < lastNodePos.z) {
+            zDirection = "z";
+        }
+
+        if(nodePos.y > lastNodePos.y) {
+            yDirection = "-y";
+        } else if(nodePos.y < lastNodePos.y) {
+            yDirection = "y";
+        }
+
+        HashMap<String, String> returnValues = new HashMap<>();
+        returnValues.put("xDirection", xDirection);
+        returnValues.put("yDirection", yDirection);
+        returnValues.put("zDirection", zDirection);
+
+        return returnValues;
+    }
+
+    private float getDebugPathBlockDisplayBaseScale(boolean isStartEndPoint) {
+        return isStartEndPoint ? 0.4f : 0.05f;
+    }
+
+    private void createDebugPathBlockDisplay(World world, Vec3d pos, Vector3f scaleModifier, Vec2f rotation, Block block, int glowColor, boolean isStartEndPoint) {
+        float scale = this.getDebugPathBlockDisplayBaseScale(isStartEndPoint);
         DisplayEntity.BlockDisplayEntity blockDisplay = EntityType.BLOCK_DISPLAY.create(world, SpawnReason.COMMAND);
 
-        blockDisplay.refreshPositionAndAngles(pos.getX(), pos.getY(), pos.getZ(), 0.0F, 0.0F);
+        blockDisplay.refreshPositionAndAngles(pos.getX(), pos.getY(), pos.getZ(), rotation.x, rotation.y);
 
-        blockDisplay.setGlowing(true);
+//        blockDisplay.setGlowing(true);
         blockDisplay.setGlowColorOverride(glowColor);
         blockDisplay.setBlockState(block.getDefaultState());
 
@@ -117,7 +190,7 @@ public interface NPCPathDebugger {
                 new AffineTransformation(
                         new Vector3f(0f, 0f, 0f),
                         new Quaternionf(0f, 0f, 0f, 1f),
-                        new Vector3f(scale, scale, scale),
+                        new Vector3f(scale, scale, scale).add(scaleModifier),
                         new Quaternionf(0f, 0f, 0f, 1f)
                 )
         );
@@ -129,9 +202,9 @@ public interface NPCPathDebugger {
     }
 
     default void clearDebugPath() {
-        debugPathEntities.forEach(entity -> {
-            entity.remove(Entity.RemovalReason.KILLED);
-        });
-        debugPathEntities.clear();
+//        debugPathEntities.forEach(entity -> {
+//            entity.remove(Entity.RemovalReason.KILLED);
+//        });
+//        debugPathEntities.clear();
     }
 }

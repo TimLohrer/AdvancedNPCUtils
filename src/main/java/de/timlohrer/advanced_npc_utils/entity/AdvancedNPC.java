@@ -51,7 +51,7 @@ public abstract class AdvancedNPC extends PathAwareEntity implements NPCPathDebu
 
             if (this.didCollide && this.posBeforeCollision == null) {
                 this.posBeforeCollision = this.getPos();
-            } else if (this.didCollide && this.posBeforeCollision != null && idleTicks > 60) {
+            } else if (this.didCollide && this.posBeforeCollision != null && idleTicks > 20) {
                 this.didCollide = false;
                 this.navigateTo(this.posBeforeCollision);
             }
