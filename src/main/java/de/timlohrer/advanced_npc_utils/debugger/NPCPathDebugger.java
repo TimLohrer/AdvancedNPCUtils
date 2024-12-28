@@ -79,6 +79,10 @@ public interface NPCPathDebugger {
 
             float lineWidth = getDebugPathBlockDisplayBaseScale(false);
 
+            // Draw Corner
+//            this.createDebugPathBlockDisplay(entity.getWorld(), corner, scaleModifier.mul(2), rotationModifier, Blocks.WHITE_CONCRETE, new Color(255, 255, 255).getRGB(), false);
+
+            // Draw Line
             if((xDirection.equals("none") || zDirection.equals("none"))
                     && yDirection.equals("none")) {
                 switch ((xDirection + zDirection).replace("none", "")) {
@@ -89,28 +93,33 @@ public interface NPCPathDebugger {
                 }
             } else if((!(xDirection.equals("none")) && !(zDirection.equals("none")))
                     && yDirection.equals("none")) {
-                float diagonalLength = (float) Math.sqrt(xDiff * xDiff + zDiff * zDiff);
-                scaleModifier.add(diagonalLength, 0, 0);
 
+                float diagonalLength = (float) Math.sqrt(xDiff * xDiff + zDiff * zDiff);
+
+                // IDEE: Fix weird translations by scaling z axis and altering rotation
                 switch (xDirection + zDirection) {
                     case "xz": {
-                        corner = corner.add(lineWidth + (lineWidth / 2), 0, 1.25 * lineWidth);
+                        corner = corner.add(1.5 * lineWidth, 0, 0.75 * lineWidth);
+                        scaleModifier.add(diagonalLength, 0, 0);
                         rotationModifier = new Vec2f(45.0f, 0.0f);
                         break;
                     }
                     case "x-z": {
-                        corner = corner.add(lineWidth + (lineWidth / 2), 0, lineWidth + (lineWidth / 2));
+                        corner = corner.add(0.25 * lineWidth, 0, lineWidth);
+                        scaleModifier.add(diagonalLength, 0, 0);
                         rotationModifier = new Vec2f(-45.0f, 0.0f);
                         break;
                     }
                     case "-xz": {
-                        corner = corner.add(2.5 * lineWidth, 0, 2.5 * lineWidth);
-                        rotationModifier = new Vec2f(135.0f, 0.0f);
+                        corner = corner.add(0.75 * lineWidth, 0, 0.5 * lineWidth);
+                        scaleModifier.add(0, 0, diagonalLength);
+                        rotationModifier = new Vec2f(45.0f, 0.0f);
                         break;
                     }
                     case "-x-z": {
-                        corner = corner.add(lineWidth + (lineWidth / 2), 0, 2 * lineWidth);
-                        rotationModifier = new Vec2f(-135.0f, 0.0f);
+                        corner = corner.add(1.5 * lineWidth, 0, 0.75 * lineWidth);
+                        scaleModifier.add(0, 0, diagonalLength);
+                        rotationModifier = new Vec2f(135.0f, 0.0f);
                         break;
                     }
                 }
@@ -173,7 +182,7 @@ public interface NPCPathDebugger {
     }
 
     private float getDebugPathBlockDisplayBaseScale(boolean isStartEndPoint) {
-        return isStartEndPoint ? 0.4f : 0.05f;
+        return isStartEndPoint ? 0.4f : 0.1f;
     }
 
     private void createDebugPathBlockDisplay(World world, Vec3d pos, Vector3f scaleModifier, Vec2f rotation, Block block, int glowColor, boolean isStartEndPoint) {
