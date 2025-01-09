@@ -4,25 +4,25 @@ import com.google.common.collect.ImmutableSet;
 import de.timlohrer.advanced_npc_utils.AdvancedNpcUtils;
 import de.timlohrer.advanced_npc_utils.debugger.NPCPathDebugger;
 import de.timlohrer.advanced_npc_utils.mixin.EntityNavigationAccessor;
+import de.timlohrer.advanced_npc_utils.routines.NPCRoutine;
+import de.timlohrer.advanced_npc_utils.routines.NPCRoutineFeatures;
 import net.minecraft.entity.EntityType;
 import net.minecraft.entity.LivingEntity;
 import net.minecraft.entity.ai.pathing.Path;
 import net.minecraft.entity.mob.PathAwareEntity;
 import net.minecraft.entity.player.PlayerEntity;
 import net.minecraft.util.math.BlockPos;
-import net.minecraft.util.math.Vec3d;
 import net.minecraft.world.World;
 import org.jetbrains.annotations.Nullable;
 
+import java.util.List;
+
 public abstract class AdvancedNPC extends PathAwareEntity implements NPCPathDebugger {
     private int idleTicks = 0;
-    private boolean didCollide = false;
-    public boolean isIdle = true;
+    private final List<NPCRoutine> routines = this.getRoutines();
 
     @Nullable
-    private BlockPos targetPos;
-    private Vec3d posBeforeCollision = this.getPos();
-
+    private NPCRoutine currentRoutine;
     @Nullable
     private Path currentPath;
 
@@ -32,47 +32,38 @@ public abstract class AdvancedNPC extends PathAwareEntity implements NPCPathDebu
 
     @Override
     public BlockPos getTargetBlockPos() {
-        return targetPos;
+        if (this.currentRoutine == null) return null;
+        return this.currentRoutine.getCurrentLocation().pos();
     }
 
     @Override
     public void tick() {
-        this.isIdle = this.targetPos == null || this.didCollide || this.getPos().distanceTo(Vec3d.of(this.targetPos)) < 0.25 || (this.currentPath != null && this.currentPath.isFinished());
-        this.targetPos = new BlockPos(0, 0, 0);
-
-        if (this.isIdle) {
-            if (this.idleTicks == 0 && this.currentPath != null) {
-                AdvancedNpcUtils.LOGGER.error("Path is finished!");
-                this.currentPath = null;
-                this.clearDebugPath();
+        if (this.routines.isEmpty()) return;
+        if (this.idleTicks > 0) {
+            if (this.currentRoutine == null) {
+                this.currentRoutine = this.routines.getFirst();
+//                this.navigateTo();
+            } else if (this.currentPath.isFinished()) {
+                if (!this.currentRoutine.getCurrentLocation().features().isEmpty() && this.idleTicks > 0) {
+                    this.currentRoutine.getCurrentLocation().features().forEach(feature -> {
+                        if (feature instanceof NPCRoutineFeatures.Pause) {
+                            this.idleTicks = -((NPCRoutineFeatures.Pause) feature).pauseTicks;
+                        } else if (feature instanceof NPCRoutineFeatures.Custom) {
+                            ((NPCRoutineFeatures.Custom) feature).action.apply(this);
+                        }
+                    });
+                } else {
+                    idleTicks++;
+                }
             }
 
-            this.idleTicks++;
-
-            if (this.didCollide && this.posBeforeCollision == null) {
-                this.posBeforeCollision = this.getPos();
-            } else if (this.didCollide && this.posBeforeCollision != null && idleTicks > 20) {
-                this.didCollide = false;
-                this.navigateTo(this.posBeforeCollision);
-            }
-        } else {
-            this.idleTicks = 0;
+//            if (this.)
         }
-
         super.tick();
     }
 
     @Override
     public void onPlayerCollision(PlayerEntity player) {
-        this.idleTicks = 0;
-
-        this.didCollide = true;
-        this.isIdle = true;
-
-        this.stopMovement();
-        this.clearDebugPath();
-
-        this.lookAtEntity(player, 90, 90);
         super.onPlayerCollision(player);
     }
 
@@ -82,10 +73,21 @@ public abstract class AdvancedNPC extends PathAwareEntity implements NPCPathDebu
         super.onKilledBy(adversary);
     }
 
+    /**
+     * @return The routines of the NPC
+     */
+    public abstract List<NPCRoutine> getRoutines();
+
+    /**
+     * @return The speed of the NPC
+     */
     public abstract float getSpeed();
 
-    protected void navigateTo(Vec3d target) {
-        Path path = ((EntityNavigationAccessor) this.navigation).invokeFindPathToAny(ImmutableSet.of(BlockPos.ofFloored(target.getX(), target.getY(), target.getZ())), 500, false, 0, 100);
+    /**
+     * @param pos The position to navigate to
+     */
+    protected void navigateTo(BlockPos pos) {
+        Path path = ((EntityNavigationAccessor) this.navigation).invokeFindPathToAny(ImmutableSet.of(pos), 500, false, 0, 100);
 
         if (path == null) {
             AdvancedNpcUtils.LOGGER.error("Path is null");
@@ -96,6 +98,14 @@ public abstract class AdvancedNPC extends PathAwareEntity implements NPCPathDebu
             this.generateDebugPath(path);
         }
         this.currentPath = path;
+        this.idleTicks = 0;
         this.navigation.startMovingAlong(this.currentPath, this.getSpeed());
+    }
+
+    /**
+     * @return The amount of ticks the NPC has been idle for
+     */
+    public int getIdleTicks() {
+        return idleTicks;
     }
 }
